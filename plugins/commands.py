@@ -14,6 +14,7 @@ from database.connections_mdb import active_connection
 import re
 import json
 import base64
+
 logger = logging.getLogger(__name__)
 
 BATCH_FILES = {}
@@ -21,7 +22,10 @@ BATCH_FILES = {}
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
     try:
+        logger.info("Received /start command")
+
         if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+            logger.info(f"Handling group or supergroup: {message.chat.title}")
             buttons = [
                 [InlineKeyboardButton('📢 𝚄𝙿𝙳𝙰𝚃𝙴𝚂 📢', url=f'https://t.me/{SUPPORT_CHAT}')],
                 [InlineKeyboardButton('ℹ️ 𝙷𝙴𝙻𝙿 ℹ️', url=f"https://t.me/{temp.U_NAME}?start=help")]
@@ -38,11 +42,13 @@ async def start(client, message):
                 await db.add_chat(message.chat.id, message.chat.title, message.chat.username)
             return
 
+        logger.info(f"Handling private chat with user {message.from_user.id}")
         if not await db.is_user_exist(message.from_user.id):
             await db.add_user(message.from_user.id, message.from_user.first_name)
             await client.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(message.from_user.id, message.from_user.mention, message.from_user.username, temp.U_NAME))
 
         if len(message.command) != 2:
+            logger.info("Sending initial /start message")
             buttons = [
                 [InlineKeyboardButton("➕️ 𝙰𝙳𝙳 𝙼𝙴 𝚃𝙾 𝚈𝙾𝚄𝚁 𝙶𝚁𝙾𝚄𝙿 ➕️", url=f"http://t.me/{temp.U_NAME}?startgroup=true")],
                 [InlineKeyboardButton("🔍 𝚂𝙴𝙰𝚁𝙲𝙷 🔍", switch_inline_query_current_chat=''), InlineKeyboardButton("📢 𝚄𝙿𝙳𝙰𝚃𝙴𝚂 📢", url="https://t.me/mkn_bots_updates")],
@@ -85,6 +91,7 @@ async def start(client, message):
             return
 
         if len(message.command) == 2 and message.command[1] in ["subscribe", "error", "okay", "help"]:
+            logger.info(f"Handling special command parameter: {message.command[1]}")
             buttons = [
                 [InlineKeyboardButton("➕️ 𝙰𝙳𝙳 𝙼𝙴 𝚃𝙾 𝚈𝙾𝚄𝚁 𝙶𝚁𝙾𝚄𝙿 ➕️", url=f"http://t.me/{temp.U_NAME}?startgroup=true")],
                 [InlineKeyboardButton("🔍 𝚂𝙴𝙰𝚁𝙲𝙷 🔍", switch_inline_query_current_chat=''), InlineKeyboardButton("📢 𝚄𝙿𝙳𝙰𝚃𝙴𝚂 📢", url="https://t.me/mkn_bots_updates")],
@@ -111,6 +118,7 @@ async def start(client, message):
             pre = ""
 
         if data.split("-", 1)[0] == "BATCH":
+            logger.info(f"Handling batch operation: {data}")
             sts = await message.reply("Please wait")
             file_id = data.split("-", 1)[1]
             msgs = BATCH_FILES.get(file_id)
@@ -119,7 +127,8 @@ async def start(client, message):
                 try:
                     with open(file) as file_data:
                         msgs = json.loads(file_data.read())
-                except Exception:
+                except Exception as e:
+                    logger.exception("Failed to open batch file")
                     await sts.edit("FAILED")
                     return await client.send_message(LOG_CHANNEL, "UNABLE TO OPEN FILE.")
                 os.remove(file)
@@ -137,141 +146,119 @@ async def start(client, message):
                             file_caption='' if f_caption is None else f_caption
                         )
                     except Exception as e:
-                        logger.exception(e)
-                        f_caption = f_caption
-                if f_caption is None:
-                    f_caption = f"{title}"
+                        logger.exception("Error formatting batch file caption")
                 try:
-                    await client.send_cached_media(
+                    await client.copy_message(
                         chat_id=message.from_user.id,
-                        file_id=msg.get("file_id"),
-                        caption=f_caption,
-                        protect_content=msg.get('protect', False),
+                        from_chat_id=int(msg.get("chat_id")),
+                        message_id=int(msg.get("message_id")),
+                        caption=f_caption
                     )
                 except FloodWait as e:
-                    await asyncio.sleep(e.x)
-                    logger.warning(f"Floodwait of {e.x} sec.")
-                    await client.send_cached_media(
+                    await asyncio.sleep(e.value)
+                    await client.copy_message(
                         chat_id=message.from_user.id,
-                        file_id=msg.get("file_id"),
-                        caption=f_caption,
-                        protect_content=msg.get('protect', False),
+                        from_chat_id=int(msg.get("chat_id")),
+                        message_id=int(msg.get("message_id")),
+                        caption=f_caption
                     )
                 except Exception as e:
-                    logger.warning(e, exc_info=True)
-                    continue
-                await asyncio.sleep(1)
-            await sts.delete()
-            return
-
-        elif data.split("-", 1)[0] == "DSTORE":
-            sts = await message.reply("Please wait")
-            b_string = data.split("-", 1)[1]
-            decoded = (base64.urlsafe_b64decode(b_string + "=" * (-len(b_string) % 4))).decode("ascii")
-            try:
-                f_msg_id, l_msg_id, f_chat_id, protect = decoded.split("_", 3)
-            except ValueError:
-                f_msg_id, l_msg_id, f_chat_id = decoded.split("_", 2)
-                protect = "/pbatch" if PROTECT_CONTENT else "batch"
-            diff = int(l_msg_id) - int(f_msg_id)
-            async for msg in client.iter_messages(int(f_chat_id), int(l_msg_id), int(f_msg_id)):
-                if msg.media:
-                    media = getattr(msg, msg.media)
-                    if BATCH_FILE_CAPTION:
-                        try:
-                            f_caption = BATCH_FILE_CAPTION.format(
-                                mention=message.from_user.mention,
-                                file_name=getattr(media, 'file_name', ''),
-                                file_size=getattr(media, 'file_size', ''),
-                                file_caption=getattr(msg, 'caption', '')
-                            )
-                        except Exception as e:
-                            logger.exception(e)
-                            f_caption = getattr(msg, 'caption', '')
-                    else:
-                        media = getattr(msg, msg.media)
-                        file_name = getattr(media, 'file_name', '')
-                        f_caption = getattr(msg, 'caption', file_name)
-                    try:
-                        await msg.copy(message.chat.id, caption=f_caption, protect_content=True if protect == "/pbatch" else False)
-                    except FloodWait as e:
-                        await asyncio.sleep(e.x)
-                        await msg.copy(message.chat.id, caption=f_caption, protect_content=True if protect == "/pbatch" else False)
-                    except Exception as e:
-                        logger.exception(e)
-                        continue
-                elif msg.empty:
-                    continue
-                else:
-                    try:
-                        await msg.copy(message.chat.id, protect_content=True if protect == "/pbatch" else False)
-                    except FloodWait as e:
-                        await asyncio.sleep(e.x)
-                        await msg.copy(message.chat.id, protect_content=True if protect == "/pbatch" else False)
-                    except Exception as e:
-                        logger.exception(e)
-                        continue
-                await asyncio.sleep(1)
+                    logger.exception("Error sending batch file message")
             return await sts.delete()
 
-        files_ = await get_file_details(file_id)
-        if not files_:
+        if data.startswith("DSTORE"):
+            logger.info(f"Handling DSTORE operation: {data}")
             try:
-                decoded_data = base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("ascii")
-                pre, file_id = decoded_data.split("_", 1)
-                msg = await client.send_cached_media(
-                    chat_id=message.from_user.id,
-                    file_id=file_id,
-                    protect_content=True if pre == 'filep' else False,
-                )
-                filetype = msg.media
-                file = getattr(msg, filetype)
-                title = file.file_name
-                size = get_size(file.file_size)
-                f_caption = f"<code>{title}</code>"
+                data = data.split("-", 1)[1]
+                decode = base64.urlsafe_b64decode(data + "=" * (4 - len(data) % 4)).decode("ascii")
+                msg_id, chat = decode.split(":", 1)
+                msg_id, chat = int(msg_id), int(chat)
+                m = await client.get_messages(chat, msg_id)
+                title = m.document.file_name
+                size = get_size(m.document.file_size)
+                f_caption = m.caption
                 if CUSTOM_FILE_CAPTION:
                     try:
                         f_caption = CUSTOM_FILE_CAPTION.format(
                             mention=message.from_user.mention,
                             file_name='' if title is None else title,
                             file_size='' if size is None else size,
-                            file_caption=''
+                            file_caption='' if f_caption is None else f_caption
                         )
                     except Exception as e:
-                        logger.exception(e)
-                        f_caption = f"<code>{title}</code>"
-                await msg.edit_caption(f_caption)
-                return
-            except Exception as e:
-                logger.exception(e)
-                return await message.reply('No such file exists.')
-
-        files = files_[0]
-        title = files.file_name
-        size = get_size(files.file_size)
-        f_caption = files.caption
-        if CUSTOM_FILE_CAPTION:
-            try:
-                f_caption = CUSTOM_FILE_CAPTION.format(
-                    mention=message.from_user.mention,
-                    file_name='' if title is None else title,
-                    file_size='' if size is None else size,
-                    file_caption='' if f_caption is None else f_caption
+                        logger.exception("Error formatting custom file caption")
+                await client.copy_message(
+                    chat_id=message.from_user.id,
+                    from_chat_id=m.chat.id,
+                    message_id=msg_id,
+                    caption=f_caption
                 )
             except Exception as e:
-                logger.exception(e)
-                f_caption = f_caption
-        if f_caption is None:
-            f_caption = f"{files.file_name}"
-        await client.send_cached_media(
-            chat_id=message.from_user.id,
-            file_id=file_id,
-            caption=f_caption,
-            protect_content=True if pre == 'filep' else False,
-        )
+                logger.exception("Error in DSTORE operation")
+                await message.reply_text(f"An error occurred: {str(e)}")
+            return
+
+        file_details = await get_file_details(file_id)
+        if not file_details:
+            logger.warning(f"File details not found for file_id: {file_id}")
+            try:
+                decode = base64.urlsafe_b64decode(file_id + "=" * (4 - len(file_id) % 4)).decode("ascii")
+                msg_id, chat = decode.split(":", 1)
+                msg_id, chat = int(msg_id), int(chat)
+                m = await client.get_messages(chat, msg_id)
+                title = m.document.file_name
+                size = get_size(m.document.file_size)
+                f_caption = m.caption
+                if CUSTOM_FILE_CAPTION:
+                    try:
+                        f_caption = CUSTOM_FILE_CAPTION.format(
+                            mention=message.from_user.mention,
+                            file_name='' if title is None else title,
+                            file_size='' if size is None else size,
+                            file_caption='' if f_caption is None else f_caption
+                        )
+                    except Exception as e:
+                        logger.exception("Error formatting custom file caption")
+                await client.copy_message(
+                    chat_id=message.from_user.id,
+                    from_chat_id=m.chat.id,
+                    message_id=msg_id,
+                    caption=f_caption
+                )
+            except Exception as e:
+                logger.exception("Error handling file details fallback")
+                await message.reply_text(f"An error occurred: {str(e)}")
+            return
+
+        for file in file_details:
+            title = file.file_name
+            size = get_size(file.file_size)
+            f_caption = file.caption
+            if CUSTOM_FILE_CAPTION:
+                try:
+                    f_caption = CUSTOM_FILE_CAPTION.format(
+                        mention=message.from_user.mention,
+                        file_name='' if title is None else title,
+                        file_size='' if size is None else size,
+                        file_caption='' if f_caption is None else f_caption
+                    )
+                except Exception as e:
+                    logger.exception("Error formatting custom file caption")
+            try:
+                await client.send_cached_media(
+                    chat_id=message.from_user.id,
+                    file_id=unpack_new_file_id(file.file_id),
+                    caption=f_caption,
+                    protect_content=PROTECT_CONTENT
+                )
+            except Exception as e:
+                logger.exception("Error sending cached media")
+                await message.reply_text(f"An error occurred: {str(e)}")
+                continue
     except Exception as e:
-        logger.exception(e)
-        await message.reply('An error occurred.')
+        logger.exception("Unhandled exception in /start command")
+        await message.reply_text(f"An error occurred: {str(e)}")
+
 
                     
 
