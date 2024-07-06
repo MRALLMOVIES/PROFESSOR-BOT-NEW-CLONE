@@ -99,10 +99,20 @@ CUSTOM_FILE_CAPTION = """<b>°• MR. ALL MOVIES •°</b>
 IMDB_TEMPLATE = """<b>Query: {query}</b> 
 IMDb Data:
 
-🏷 Title: <a href={url}>{title}</a>
-🎭 Genres: {genres}
-📆 Year: <a href={url}/releaseinfo>{year}</a>
-🌟 Rating: <a href={url}/ratings>{rating}</a> / 10"""
+<b>🏷 Title</b>: <a href={url}>{title}</a>
+<b>🎭 Genres</b>: {genres}
+<b>📆 Year</b>: <a href={url}/releaseinfo>{year}</a>
+<b>🌟 Rating</b>: <a href={url}/ratings>{rating}</a>
+<b>☀ Languages</b> : <code>{languages}</code>
+<b>👨‍💼 Dɪʀᴇᴄᴛᴏʀ</b>: {director}\n<b>👨🏻‍🦱 Pʀᴏᴅᴜᴄᴇʀ</b>: {producer}
+<b>📑 wʀɪᴛᴇʀ</b>: {writer}
+<b>📀 RunTime</b>: {runtime} Minutes
+<b>📆 Release Info</b> : {release_date}
+<b>🎛 Countries</b> : <code>{countries}</code>
+<b>📓 Sᴛᴏʀy</b> : <code>{plot}</code>
+
+
+<b>🍀Requested by🍀</b> : {message.from_user.mention}"""
 
 #request force sub
 REQ_SUB = bool(environ.get("REQ_SUB", True))
