@@ -104,7 +104,8 @@ IMDb Data:
 <b>📆 Year</b>: <a href={url}/releaseinfo>{year}</a>
 <b>🌟 Rating</b>: <a href={url}/ratings>{rating}</a>
 <b>☀ Languages</b> : <code>{languages}</code>
-<b>👨‍💼 Dɪʀᴇᴄᴛᴏʀ</b>: {director}\n<b>👨🏻‍🦱 Pʀᴏᴅᴜᴄᴇʀ</b>: {producer}
+<b>👨‍💼 Dɪʀᴇᴄᴛᴏʀ</b>: {director}
+<b>👨🏻‍🦱 Pʀᴏᴅᴜᴄᴇʀ</b>: {producer}
 <b>📑 wʀɪᴛᴇʀ</b>: {writer}
 <b>📀 RunTime</b>: {runtime} Minutes
 <b>📆 Release Info</b> : {release_date}
